@@ -62,9 +62,17 @@ impl Editor {
         let Position { mut y, mut x } = self.cursor_position;
         match key {
             Key::Up => y = y.saturating_sub(1),
-            Key::Down => y = y.saturating_add(1),
-            Key::Left => y = y.saturating_sub(1),
-            Key::Right => y = y.saturating_add(1),
+            Key::Down => {
+                if y < height {
+                    y = y.saturating_add(1);
+                }
+            }
+            Key::Left => x = x.saturating_sub(1),
+            Key::Right => {
+                if x < width {
+                    x = x.saturating_add(1);
+                }
+            }
             _=> (),
         }
         self.cursor_position = Position { x, y }
