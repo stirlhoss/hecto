@@ -2,8 +2,11 @@ use crate::Document;
 use crate::Row;
 use crate::Terminal;
 use std::env;
+use termion::color;
 use termion::event::Key;
 
+const STAUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
+const STAUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Default)]
@@ -60,6 +63,8 @@ impl Editor {
             println!("Goodbye.\r");
         } else {
             self.draw_rows();
+            self.draw_status_bar();
+            self.draw_message_bar();
             Terminal::cursor_position(&Position {
                 x: self.cursor_position.x.saturating_sub(self.offset.x),
                 y: self.cursor_position.y.saturating_sub(self.offset.y),
@@ -102,6 +107,7 @@ impl Editor {
         }
     }
     fn move_cursor(&mut self, key: Key) {
+        let terminal_height = self.terminal.size().height as usize;
         let Position { mut y, mut x } = self.cursor_position;
         let height = self.document.len();
         let mut width = if let Some(row) = self.document.row(y) {
@@ -116,14 +122,40 @@ impl Editor {
                     y = y.saturating_add(1);
                 }
             }
-            Key::Left => x = x.saturating_sub(1),
-            Key::Right => {
-                if x < width {
-                    x = x.saturating_add(1);
+            Key::Left => {
+                if x > 0 {
+                    x -= 1;
+                } else if y > 0 {
+                    y -= 1;
+                    if let Some(row) = self.document.row(y) {
+                        x = row.len();
+                    } else {
+                        x = 0;
+                    }
                 }
             }
-            Key::PageUp => y = 0,
-            Key::PageDown => y = height,
+            Key::Right => {
+                if x < width {
+                    x += 1;
+                } else if y < height {
+                    y += 1;
+                    x = 0;
+                }
+            }
+            Key::PageUp => {
+                y = if y > terminal_height {
+                    y - terminal_height
+                } else {
+                    0
+                }
+            }
+            Key::PageDown => {
+                y = if y.saturating_add(terminal_height) < height {
+                    y + terminal_height as usize
+                } else {
+                    height
+                }
+            }
             Key::Home => x = 0,
             Key::End => x = width,
             _ => (),
@@ -158,7 +190,7 @@ impl Editor {
     }
     fn draw_rows(&self) {
         let height = self.terminal.size().height;
-        for terminal_row in 0..height - 1 {
+        for terminal_row in 0..height {
             Terminal::clear_current_line();
             if let Some(row) = self.document.row(terminal_row as usize + self.offset.y) {
                 self.draw_row(row);
@@ -169,8 +201,37 @@ impl Editor {
             }
         }
     }
-}
+    fn draw_status_bar(&self) {
+        let mut status;
+        let width = self.terminal.size().width as usize;
+        let mut file_name = "[No Name]".to_string();
+        if let Some(name) = &self.document.file_name {
+            file_name = name.clone();
+            file_name.truncate(20);
+        }
+        status = format!("{} - {} lines", file_name, self.document.len());
 
+        let line_indicator = format!(
+            "{}/{}",
+            self.cursor_position.y.saturating_add(1),
+            self.document.len()
+        );
+        let len = status.len() + line_indicator.len();
+        if width > len {
+            status.push_str(&" ".repeat(width - len));
+        }
+        status = format!("{}{}", status, line_indicator);
+        status.truncate(width);
+        Terminal::set_bg_color(STAUS_BG_COLOR);
+        Terminal::set_fg_color(STAUS_FG_COLOR);
+        println! {"{}\r", status};
+        Terminal::reset_fg_color();
+        Terminal::reset_bg_color();
+    }
+    fn draw_message_bar(&self) {
+        Terminal::clear_current_line();
+    }
+}
 fn die(e: std::io::Error) {
     Terminal::clear_screen();
     panic!("{}", e);
